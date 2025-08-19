@@ -21,22 +21,69 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     // 设置更宽松的会话检测
     flowType: 'pkce'
   },
-  // 添加全局配置
+  // 添加全局配置 - 针对自托管环境优化
   global: {
     headers: {
       'X-Client-Info': 'hospital-delivery-pwa',
       'apikey': supabaseAnonKey,
-      'Cache-Control': 'no-cache'
+      'Cache-Control': 'no-cache',
+      'Accept': 'application/json'
+      // 移除 Content-Type 以允许文件上传时自动设置正确的类型
+    },
+    // 添加网络超时和重试配置
+    fetch: async (url, options = {}) => {
+      const maxRetries = 3
+      const baseDelay = 1000
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 30000) // 30秒超时
+          
+          const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+          })
+          
+          clearTimeout(timeoutId)
+          
+          // 如果响应成功，直接返回
+          if (response.ok || response.status < 500) {
+            return response
+          }
+          
+          // 服务器错误，尝试重试
+          throw new Error(`Server error: ${response.status}`)
+          
+        } catch (error: any) {
+          console.warn(`网络请求失败，第 ${attempt}/${maxRetries} 次尝试:`, {
+            url,
+            error: error.message,
+            attempt
+          })
+          
+          // 如果是最后一次尝试，抛出错误
+          if (attempt === maxRetries) {
+            throw error
+          }
+          
+          // 等待后重试，使用指数退避
+          await new Promise(resolve => setTimeout(resolve, baseDelay * Math.pow(2, attempt - 1)))
+        }
+      }
+      
+      throw new Error('Max retries exceeded')
     }
   },
   // 数据库配置
   db: {
     schema: 'public'
   },
-  // 实时订阅配置
+  // 实时订阅配置 - 针对自托管环境调整
   realtime: {
     params: {
-      eventsPerSecond: 10
+      eventsPerSecond: 5, // 降低频率以适应云服务器
+      timeout: 30000 // 增加超时时间
     }
   }
 })
@@ -161,4 +208,120 @@ export interface PlatformSettings {
   key: string
   value?: string
   updated_at: string
+}
+
+// 连接验证和错误处理
+export const validateSupabaseConnection = async (): Promise<{
+  isConnected: boolean
+  error?: string
+  latency?: number
+}> => {
+  try {
+    const startTime = Date.now()
+    
+    // 测试基本连接
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('count')
+      .limit(1)
+      .single()
+    
+    const latency = Date.now() - startTime
+    
+    if (error && error.code !== 'PGRST116') { // PGRST116 是空结果错误，可以忽略
+      console.warn('Supabase connection test failed:', error)
+      return {
+        isConnected: false,
+        error: `连接测试失败: ${error.message}`,
+        latency
+      }
+    }
+    
+    console.log(`Supabase 连接成功，延迟: ${latency}ms`)
+    return {
+      isConnected: true,
+      latency
+    }
+  } catch (error: any) {
+    console.error('Supabase connection validation error:', error)
+    return {
+      isConnected: false,
+      error: `连接验证异常: ${error.message || '未知错误'}`
+    }
+  }
+}
+
+// 自动重试机制的数据库操作包装器
+export const withRetry = async <T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  delay: number = 1000,
+  shouldRetry?: (error: any) => boolean
+): Promise<T> => {
+  let lastError: Error
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation()
+    } catch (error: any) {
+      lastError = error
+      console.warn(`操作失败，第 ${attempt}/${maxRetries} 次尝试:`, {
+        error: error.message,
+        code: error.code,
+        attempt
+      })
+      
+      // 检查是否应该重试
+      if (shouldRetry && !shouldRetry(error)) {
+        throw error
+      }
+      
+      // 对于某些错误类型，不进行重试
+      if (error.code === '42501' || error.code === '23505') { // 权限错误或唯一约束违反
+        throw error
+      }
+      
+      if (attempt < maxRetries) {
+        // 使用指数退避策略
+        const retryDelay = delay * Math.pow(2, attempt - 1)
+        await new Promise(resolve => setTimeout(resolve, retryDelay))
+      }
+    }
+  }
+  
+  throw lastError!
+}
+
+// 专门用于 Supabase 操作的重试包装器
+export const withSupabaseRetry = async <T>(
+  operation: () => Promise<{ data: T; error: any }>,
+  maxRetries: number = 3
+): Promise<{ data: T; error: any }> => {
+  return withRetry(
+    operation,
+    maxRetries,
+    1000,
+    (error) => {
+      // 只对网络错误和临时服务器错误进行重试
+      return error.code === 'PGRST301' || 
+             error.message?.includes('network') ||
+             error.message?.includes('timeout') ||
+             error.message?.includes('fetch')
+    }
+  )
+}
+
+// 初始化时验证连接
+if (typeof window !== 'undefined') {
+  // 延迟验证连接，避免阻塞应用启动
+  setTimeout(() => {
+    validateSupabaseConnection().then(result => {
+      if (!result.isConnected) {
+        console.error('Supabase 自托管实例连接失败:', result.error)
+        // 可以在这里添加用户通知逻辑
+      } else {
+        console.log('✅ Supabase 自托管实例连接正常')
+      }
+    })
+  }, 2000)
 }

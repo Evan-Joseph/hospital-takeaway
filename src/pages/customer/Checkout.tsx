@@ -14,6 +14,7 @@ interface Merchant {
   id: string;
   name: string;
   payment_qr_code: string;
+  minimum_order_amount?: number;
 }
 
 export default function Checkout() {
@@ -75,7 +76,7 @@ export default function Checkout() {
     try {
       const { data, error } = await supabase
         .from('merchants')
-        .select('id, name, payment_qr_code')
+        .select('id, name, payment_qr_code, minimum_order_amount')
         .eq('id', merchantId)
         .single();
 
@@ -141,7 +142,17 @@ export default function Checkout() {
     let createdOrderId: string | null = null;
     
     try {
-      // 1. 先检查所有商品的库存
+      // 1. 先检查起送金额
+      console.log('开始检查起送金额...');
+      const discountInfo = getMerchantTotalWithDiscount(merchantId);
+      const totalAmount = discountInfo.finalTotal;
+      
+      if (merchant?.minimum_order_amount && totalAmount < merchant.minimum_order_amount) {
+        toast.error(`订单金额不足，起送金额为¥${merchant.minimum_order_amount.toFixed(2)}`);
+        return;
+      }
+      
+      // 2. 检查所有商品的库存
       console.log('开始检查库存...');
       const stockCheckPromises = currentMerchantItems.items.map(async (item) => {
         const { data: product, error } = await supabase
@@ -178,9 +189,7 @@ export default function Checkout() {
       console.log('库存检查通过，开始创建订单...');
       const orderNumber = generateOrderNumber();
       const code = generateVerificationCode();
-      // 使用折扣后的总金额
-      const discountInfo = getMerchantTotalWithDiscount(merchantId);
-      const totalAmount = discountInfo.finalTotal;
+      // 使用之前计算的折扣后总金额
 
       // 2. 创建订单
       const { data: order, error: orderError } = await supabase

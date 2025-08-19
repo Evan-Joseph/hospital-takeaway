@@ -34,7 +34,7 @@ export default function PaymentManagement({ merchant }: Props) {
     try {
       // 验证文件类型
       if (!file.type.startsWith('image/')) {
-        throw new Error('请选择图片文件（JPG、PNG、GIF等格式）');
+        throw new Error('请选择图片文件');
       }
 
       // 验证文件大小 (10MB)
@@ -48,12 +48,46 @@ export default function PaymentManagement({ merchant }: Props) {
 
       console.log('开始上传收款码:', { fileName, filePath, fileSize: file.size });
 
+      // 首先检查存储桶是否存在
+      const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+      if (bucketsError) {
+        console.error('检查存储桶失败:', bucketsError);
+        throw new Error('存储服务连接失败，请稍后重试');
+      }
+
+      const imagesBucket = buckets.find(bucket => bucket.name === 'images');
+      if (!imagesBucket) {
+        console.error('images存储桶不存在');
+        throw new Error('存储配置错误：images存储桶不存在，请联系管理员');
+      }
+
       const { error: uploadError } = await supabase.storage
         .from('images')
         .upload(filePath, file);
 
       if (uploadError) {
         console.error('收款码上传失败:', uploadError);
+        
+        // 检查是否是JSON错误（通常表示存储桶配置问题）
+        if (uploadError.message.includes('application/json') || 
+            uploadError.message.includes('mime type') ||
+            uploadError.message.includes('Bucket not found')) {
+          throw new Error('存储配置错误，请联系管理员检查存储桶设置');
+        }
+        
+        // 检查是否是权限错误
+        if (uploadError.message.includes('policy') || 
+            uploadError.message.includes('permission') ||
+            uploadError.message.includes('RLS')) {
+          throw new Error('存储权限错误，请联系管理员检查访问策略');
+        }
+        
+        // 检查是否是文件大小或类型错误
+        if (uploadError.message.includes('file size') || 
+            uploadError.message.includes('mime')) {
+          throw new Error('文件格式或大小不符合要求');
+        }
+        
         throw new Error(`上传失败: ${uploadError.message}`);
       }
 
@@ -106,7 +140,19 @@ export default function PaymentManagement({ merchant }: Props) {
       toast.success('收款码上传成功');
     } catch (error) {
       console.error('Error uploading QR code:', error);
-      const errorMessage = error instanceof Error ? error.message : '上传失败，请重试';
+      let errorMessage = '上传失败，请重试';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        
+        // 为特定错误提供更详细的解决方案
+        if (error.message.includes('存储配置错误')) {
+          errorMessage += '\n\n解决方案：\n1. 检查Supabase Storage配置\n2. 确认images存储桶已创建\n3. 联系技术支持';
+        } else if (error.message.includes('权限错误')) {
+          errorMessage += '\n\n解决方案：\n1. 检查RLS策略配置\n2. 确认用户权限设置\n3. 联系技术支持';
+        }
+      }
+      
       toast.error(errorMessage);
     } finally {
       setUploading(false);

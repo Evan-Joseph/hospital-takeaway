@@ -215,7 +215,6 @@ export default function OrderDetail() {
         .from('orders')
         .update({ 
           status: 'customer_received',
-          completed_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
         .eq('id', order.id);

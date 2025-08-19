@@ -1,0 +1,138 @@
+############
+# Secrets
+# YOU MUST CHANGE THESE BEFORE GOING INTO PRODUCTION
+############
+
+POSTGRES_PASSWORD=your-super-secret-and-long-postgres-password
+JWT_SECRET=9R0xTRjR/j5Flh8hpR1yoyuA1WH8+c3Pqp2rpQMtOHM=
+ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhvc3BpdGFsLWRlbGl2ZXJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU1Mjk1NDQsImV4cCI6MjAwMDAwMDAwMH0.L9uR4Xl3V2YEU-qMA0Z_C0otyJHRdNLq4wKndAiV_FQ
+SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhvc3BpdGFsLWRlbGl2ZXJ5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTUyOTU0NCwiZXhwIjoyMDAwMDAwMDAwfQ.BNeaz2yIZhQR2pX_j-xTBqxU8deYG245OOkxQ18BsJg
+DASHBOARD_USERNAME=supabase
+DASHBOARD_PASSWORD=supabase
+
+############
+# Database
+############
+
+POSTGRES_HOST=db
+POSTGRES_PORT=5432
+POSTGRES_DB=postgres
+
+############
+# API Proxy
+############
+
+KONG_HTTP_PORT=8000
+KONG_HTTPS_PORT=8443
+
+############
+# API
+############
+
+SUPABASE_PUBLIC_URL=http://localhost:8000
+API_EXTERNAL_URL=http://localhost:8000
+
+############
+# Auth
+############
+
+## General
+SITE_URL=http://localhost:3000
+ADDITIONAL_REDIRECT_URLS=
+JWT_EXPIRY=3600
+DISABLE_SIGNUP=false
+API_EXTERNAL_URL=http://localhost:8000
+
+## Mailer Config
+MAILER_URLPATHS_INVITE=/auth/v1/verify
+MAILER_URLPATHS_CONFIRMATION=/auth/v1/verify
+MAILER_URLPATHS_RECOVERY=/auth/v1/verify
+MAILER_URLPATHS_EMAIL_CHANGE=/auth/v1/verify
+
+## Email auth
+ENABLE_EMAIL_SIGNUP=true
+ENABLE_EMAIL_AUTOCONFIRM=false
+SMTP_ADMIN_EMAIL=admin@example.com
+SMTP_HOST=supabase-mail
+SMTP_PORT=2500
+SMTP_USER=fake_mail_user
+SMTP_PASS=fake_mail_password
+SMTP_SENDER_NAME=fake_sender
+
+## Phone auth
+ENABLE_PHONE_SIGNUP=true
+ENABLE_PHONE_AUTOCONFIRM=true
+
+############
+# Studio
+############
+STUDIO_DEFAULT_ORGANIZATION=Default Organization
+STUDIO_DEFAULT_PROJECT=Default Project
+
+STUDIO_PORT=3000
+# openai api key - required for Supabase AI
+OPENAI_API_KEY=
+
+############
+# Functions
+############
+FUNCTIONS_VERIFY_JWT=false
+
+############
+# Logs
+############
+LOGFLARE_PRIVATE_ACCESS_TOKEN=your-super-secret-and-long-logflare-key
+LOGFLARE_PUBLIC_ACCESS_TOKEN=your-public-logflare-token
+
+############
+# Metrics
+############
+ENABLE_ANALYTICS=true
+
+############
+# Postgres Rest
+############
+PGRST_DB_SCHEMAS=public,storage,graphql_public
+
+############
+# Storage
+############
+STORAGE_BACKEND=file
+GLOBAL_S3_BUCKET=stub
+# TODO: https://github.com/supabase/storage-api/issues/55
+STORAGE_S3_REGION=stub
+STORAGE_S3_ENDPOINT=stub
+STORAGE_S3_FORCE_PATH_STYLE=true
+STORAGE_S3_ACCESS_KEY_ID=stub
+STORAGE_S3_SECRET_ACCESS_KEY=stub
+
+############
+# Edge Runtime
+############
+# Uncomment to use Edge Runtime without background workers. You can develop edge functions locally without setting up the background workers.
+# EDGE_RUNTIME_POLICY=per_worker
+
+############
+# Realtime
+############
+# Uncomment and configure to enable Realtime
+# REALTIME_ENABLE_MULTIPLAYER=true
+# REALTIME_TENANTS_CHECK_JWT=true
+
+############
+# Anonymous Users
+############
+ENABLE_ANONYMOUS_USERS=false
+
+############
+# Additional Variables
+############
+DOCKER_SOCKET_LOCATION=/var/run/docker.sock
+POOLER_PROXY_PORT_TRANSACTION=6543
+POOLER_TENANT_ID=default
+POOLER_DEFAULT_POOL_SIZE=20
+POOLER_DB_POOL_SIZE=20
+VAULT_ENC_KEY=your-vault-encryption-key-32-chars
+POOLER_MAX_CLIENT_CONN=100
+SECRET_KEY_BASE=your-secret-key-base-64-characters-long-for-phoenix-framework
+IMGPROXY_ENABLE_WEBP_DETECTION=true

@@ -7,6 +7,7 @@ import Input from '../../components/ui/Input';
 import Modal from '../../components/ui/Modal';
 import Loading from '../../components/ui/Loading';
 import Empty from '../../components/Empty';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { toast } from 'sonner';
 
 interface Merchant {
@@ -66,6 +67,9 @@ export default function MenuManagement({ merchant }: Props) {
   });
   const [submitting, setSubmitting] = useState(false);
   const [imagePreview, setImagePreview] = useState<string>('');
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (merchant?.id) {
@@ -166,12 +170,46 @@ export default function MenuManagement({ merchant }: Props) {
 
       console.log('开始上传图片:', { fileName, filePath, fileSize: file.size });
 
+      // 首先检查存储桶是否存在
+      const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+      if (bucketsError) {
+        console.error('检查存储桶失败:', bucketsError);
+        throw new Error('存储服务连接失败，请稍后重试');
+      }
+
+      const imagesBucket = buckets.find(bucket => bucket.name === 'images');
+      if (!imagesBucket) {
+        console.error('images存储桶不存在');
+        throw new Error('存储配置错误：images存储桶不存在，请联系管理员');
+      }
+
       const { error: uploadError } = await supabase.storage
         .from('images')
         .upload(filePath, file);
 
       if (uploadError) {
         console.error('图片上传失败:', uploadError);
+        
+        // 检查是否是JSON错误（通常表示存储桶配置问题）
+        if (uploadError.message.includes('application/json') || 
+            uploadError.message.includes('mime type') ||
+            uploadError.message.includes('Bucket not found')) {
+          throw new Error('存储配置错误，请联系管理员检查存储桶设置');
+        }
+        
+        // 检查是否是权限错误
+        if (uploadError.message.includes('policy') || 
+            uploadError.message.includes('permission') ||
+            uploadError.message.includes('RLS')) {
+          throw new Error('存储权限错误，请联系管理员检查访问策略');
+        }
+        
+        // 检查是否是文件大小或类型错误
+        if (uploadError.message.includes('file size') || 
+            uploadError.message.includes('mime')) {
+          throw new Error('文件格式或大小不符合要求');
+        }
+        
         throw new Error(`上传失败: ${uploadError.message}`);
       }
 
@@ -202,7 +240,20 @@ export default function MenuManagement({ merchant }: Props) {
           imageUrl = await uploadImage(formData.image_file);
         } catch (uploadError) {
           console.error('图片上传失败:', uploadError);
-          toast.error(uploadError instanceof Error ? uploadError.message : '图片上传失败，请重试');
+          let errorMessage = '图片上传失败，请重试';
+          
+          if (uploadError instanceof Error) {
+            errorMessage = uploadError.message;
+            
+            // 为特定错误提供更详细的解决方案
+            if (uploadError.message.includes('存储配置错误')) {
+              errorMessage += '\n\n解决方案：\n1. 检查Supabase Storage配置\n2. 确认images存储桶已创建\n3. 联系技术支持';
+            } else if (uploadError.message.includes('权限错误')) {
+              errorMessage += '\n\n解决方案：\n1. 检查RLS策略配置\n2. 确认用户权限设置\n3. 联系技术支持';
+            }
+          }
+          
+          toast.error(errorMessage);
           setSubmitting(false);
           return;
         }
@@ -248,23 +299,38 @@ export default function MenuManagement({ merchant }: Props) {
     }
   };
 
-  const handleDelete = async (product: Product) => {
-    if (!confirm(`确定要删除商品「${product.name}」吗？`)) return;
+  const handleDelete = (product: Product) => {
+    setProductToDelete(product);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!productToDelete) return;
     
+    setDeleting(true);
     try {
       const { error } = await supabase
         .from('products')
         .delete()
-        .eq('id', product.id);
+        .eq('id', productToDelete.id);
 
       if (error) throw error;
       
       toast.success('商品删除成功');
       fetchProducts();
+      setShowDeleteDialog(false);
+      setProductToDelete(null);
     } catch (error) {
       console.error('Error deleting product:', error);
       toast.error('删除商品失败');
+    } finally {
+      setDeleting(false);
     }
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteDialog(false);
+    setProductToDelete(null);
   };
 
   const toggleAvailability = async (product: Product) => {
@@ -366,7 +432,7 @@ export default function MenuManagement({ merchant }: Props) {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {filteredProducts.map((product) => (
             <Card key={product.id} className="overflow-hidden">
               {/* Product Image */}
@@ -446,7 +512,8 @@ export default function MenuManagement({ merchant }: Props) {
                     onClick={() => handleDelete(product)}
                     className="text-red-600 border-red-200"
                   >
-                    <Trash2 className="w-3 h-3" />
+                    <Trash2 className="w-3 h-3 mr-1" />
+                    删除
                   </Button>
                 </div>
               </div>
@@ -592,6 +659,19 @@ export default function MenuManagement({ merchant }: Props) {
           </div>
         </form>
       </Modal>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteDialog}
+        onClose={cancelDelete}
+        onConfirm={confirmDelete}
+        title="确认删除商品"
+        message={`确定要删除商品「${productToDelete?.name}」吗？此操作不可撤销！`}
+        confirmText="删除"
+        cancelText="取消"
+        type="danger"
+        loading={deleting}
+      />
     </div>
   );
 }

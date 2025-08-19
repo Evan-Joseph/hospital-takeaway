@@ -187,12 +187,8 @@ export default function OrderManagement({ merchant }: Props) {
       };
       
       // 根据状态添加相应的时间戳
-      if (newStatus === 'merchant_confirmed') {
-        updateData.merchant_confirmed_at = new Date().toISOString();
-        updateData.delivery_started_at = new Date().toISOString();
-      } else if (newStatus === 'customer_received') {
-        updateData.completed_at = new Date().toISOString();
-      }
+      // 注意：orders表中只有基础字段，不包含额外的时间戳字段
+      // 如果需要记录详细时间，可以考虑在将来添加这些字段到数据库schema中
       
       const { error } = await supabase
         .from('orders')

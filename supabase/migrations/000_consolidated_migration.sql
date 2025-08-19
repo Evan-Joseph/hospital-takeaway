@@ -487,7 +487,116 @@ INSERT INTO announcements (title, content, is_active, target_roles) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================================
--- 7. 字段注释
+-- 7. Supabase Storage 配置
+-- ============================================================================
+
+-- 创建 images 存储桶用于存储图片文件
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'images',
+    'images',
+    true,
+    10485760, -- 10MB
+    ARRAY['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+)
+ON CONFLICT (id) DO UPDATE SET
+    public = EXCLUDED.public,
+    file_size_limit = EXCLUDED.file_size_limit,
+    allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- 启用 storage.objects 表的 RLS
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+
+-- 允许所有人查看公共存储桶中的文件
+DROP POLICY IF EXISTS "Allow public read access on images bucket" ON storage.objects;
+CREATE POLICY "Allow public read access on images bucket"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'images');
+
+-- 允许认证用户上传文件到 images 存储桶
+DROP POLICY IF EXISTS "Allow authenticated users to upload images" ON storage.objects;
+CREATE POLICY "Allow authenticated users to upload images"
+ON storage.objects FOR INSERT
+WITH CHECK (
+    bucket_id = 'images' 
+    AND auth.role() = 'authenticated'
+    AND (storage.foldername(name))[1] IN ('products', 'banners', 'qrcodes', 'uploads')
+);
+
+-- 允许认证用户更新自己上传的文件
+DROP POLICY IF EXISTS "Allow authenticated users to update their images" ON storage.objects;
+CREATE POLICY "Allow authenticated users to update their images"
+ON storage.objects FOR UPDATE
+USING (
+    bucket_id = 'images' 
+    AND auth.role() = 'authenticated'
+)
+WITH CHECK (
+    bucket_id = 'images' 
+    AND auth.role() = 'authenticated'
+);
+
+-- 允许认证用户删除自己上传的文件
+DROP POLICY IF EXISTS "Allow authenticated users to delete their images" ON storage.objects;
+CREATE POLICY "Allow authenticated users to delete their images"
+ON storage.objects FOR DELETE
+USING (
+    bucket_id = 'images' 
+    AND auth.role() = 'authenticated'
+);
+
+-- 为 storage.objects 表授予权限
+GRANT ALL ON storage.objects TO authenticated;
+GRANT SELECT ON storage.objects TO anon;
+
+-- 为 storage.buckets 表授予权限
+GRANT ALL ON storage.buckets TO authenticated;
+GRANT SELECT ON storage.buckets TO anon;
+
+-- ============================================================================
+-- 8. 商家状态同步触发器（修复激活状态不一致问题）
+-- ============================================================================
+
+-- 创建商家状态同步触发器函数
+CREATE OR REPLACE FUNCTION sync_merchant_status()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- 当 status 字段更新时，同步更新 is_active 字段
+    IF OLD.status IS DISTINCT FROM NEW.status THEN
+        NEW.is_active = (NEW.status = 'active');
+    END IF;
+    
+    -- 当 is_active 字段更新时，同步更新 status 字段
+    IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
+        IF NEW.is_active = true THEN
+            NEW.status = 'active';
+        ELSE
+            -- 如果 is_active 设为 false，但没有指定具体状态，默认设为 pending
+            IF NEW.status = 'active' THEN
+                NEW.status = 'pending';
+            END IF;
+        END IF;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 创建商家状态同步触发器
+DROP TRIGGER IF EXISTS sync_merchant_status_trigger ON merchants;
+CREATE TRIGGER sync_merchant_status_trigger
+    BEFORE UPDATE ON merchants
+    FOR EACH ROW
+    EXECUTE FUNCTION sync_merchant_status();
+
+-- 修复现有数据的状态不一致问题
+UPDATE merchants 
+SET is_active = (status = 'active')
+WHERE (status = 'active' AND is_active = false) 
+   OR (status != 'active' AND is_active = true);
+
+-- ============================================================================
+-- 9. 字段注释
 -- ============================================================================
 
 COMMENT ON COLUMN promotions.max_usage_product_count IS '最大使用商品数限制';
@@ -498,16 +607,128 @@ COMMENT ON COLUMN announcements.target_roles IS '目标角色数组：customer, 
 COMMENT ON COLUMN orders.payment_deadline IS '支付截止时间';
 COMMENT ON COLUMN orders.auto_close_at IS '自动关闭时间';
 COMMENT ON COLUMN merchants.status IS '商家状态：pending(待审核), active(已激活), suspended(已封停)';
+COMMENT ON COLUMN merchants.is_active IS '商家激活状态：与 status 字段自动同步';
 
 -- ============================================================================
--- 8. 存储桶创建 (Supabase Storage)
+-- 7. Supabase Storage 配置
 -- ============================================================================
 
--- 创建存储桶用于图片上传
--- 注意：这部分需要在Supabase控制台中手动创建或通过API创建
--- INSERT INTO storage.buckets (id, name, public) VALUES ('product-images', 'product-images', true);
--- INSERT INTO storage.buckets (id, name, public) VALUES ('banner-images', 'banner-images', true);
--- INSERT INTO storage.buckets (id, name, public) VALUES ('merchant-qr-codes', 'merchant-qr-codes', true);
+-- 创建 images 存储桶
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'images',
+    'images',
+    true,
+    10485760, -- 10MB
+    ARRAY['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+)
+ON CONFLICT (id) DO UPDATE SET
+    public = EXCLUDED.public,
+    file_size_limit = EXCLUDED.file_size_limit,
+    allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- 启用 storage.objects 表的 RLS
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+
+-- 允许所有人查看公共存储桶中的文件
+DROP POLICY IF EXISTS "Public Access" ON storage.objects;
+CREATE POLICY "Public Access" ON storage.objects
+    FOR SELECT USING (bucket_id = 'images');
+
+-- 允许认证用户上传文件到 images 存储桶
+DROP POLICY IF EXISTS "Authenticated users can upload images" ON storage.objects;
+CREATE POLICY "Authenticated users can upload images" ON storage.objects
+    FOR INSERT WITH CHECK (
+        bucket_id = 'images' 
+        AND auth.role() = 'authenticated'
+        AND (storage.foldername(name))[1] IN ('products', 'banners', 'qrcodes', 'uploads')
+    );
+
+-- 允许认证用户更新自己上传的文件
+DROP POLICY IF EXISTS "Authenticated users can update own images" ON storage.objects;
+CREATE POLICY "Authenticated users can update own images" ON storage.objects
+    FOR UPDATE USING (
+        bucket_id = 'images' 
+        AND auth.role() = 'authenticated'
+    );
+
+-- 允许认证用户删除自己上传的文件
+DROP POLICY IF EXISTS "Authenticated users can delete own images" ON storage.objects;
+CREATE POLICY "Authenticated users can delete own images" ON storage.objects
+    FOR DELETE USING (
+        bucket_id = 'images' 
+        AND auth.role() = 'authenticated'
+    );
+
+-- 为存储相关表授予权限
+GRANT ALL ON storage.buckets TO authenticated;
+GRANT ALL ON storage.objects TO authenticated;
+GRANT SELECT ON storage.buckets TO anon;
+GRANT SELECT ON storage.objects TO anon;
+
+-- ============================================================================
+-- 8. 商家状态同步修复
+-- ============================================================================
+
+-- 创建商家状态同步触发器函数
+CREATE OR REPLACE FUNCTION sync_merchant_status()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- 当 status 字段更新时，同步更新 is_active 字段
+    IF OLD.status IS DISTINCT FROM NEW.status THEN
+        NEW.is_active = (NEW.status = 'active');
+    END IF;
+    
+    -- 当 is_active 字段更新时，同步更新 status 字段
+    IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
+        IF NEW.is_active = true THEN
+            NEW.status = 'active';
+        ELSE
+            -- 如果设置为非激活，但当前状态是 active，则改为 pending
+            IF OLD.status = 'active' THEN
+                NEW.status = 'pending';
+            END IF;
+        END IF;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 创建商家状态同步触发器
+DROP TRIGGER IF EXISTS sync_merchant_status_trigger ON merchants;
+CREATE TRIGGER sync_merchant_status_trigger
+    BEFORE UPDATE ON merchants
+    FOR EACH ROW
+    EXECUTE FUNCTION sync_merchant_status();
+
+-- 修复现有数据的状态不一致问题
+UPDATE merchants 
+SET is_active = (status = 'active')
+WHERE (status = 'active' AND is_active = false) 
+   OR (status != 'active' AND is_active = true);
+
+-- ============================================================================
+-- 9. 字段注释
+-- ============================================================================
+
+COMMENT ON COLUMN promotions.max_usage_product_count IS '最大使用商品数限制';
+COMMENT ON COLUMN promotions.current_usage_product_count IS '当前已使用商品数';
+COMMENT ON COLUMN promotion_usage.product_count IS '本次使用涉及的商品数量';
+COMMENT ON COLUMN announcements.announcement_type IS '公告类型：general, urgent, maintenance, promotion';
+COMMENT ON COLUMN announcements.target_roles IS '目标角色数组：customer, merchant, super_admin';
+COMMENT ON COLUMN orders.payment_deadline IS '支付截止时间';
+COMMENT ON COLUMN orders.auto_close_at IS '自动关闭时间';
+COMMENT ON COLUMN merchants.status IS '商家状态：pending(待审核), active(已激活), suspended(已封停)';
+COMMENT ON COLUMN merchants.is_active IS '商家激活状态：与 status 字段自动同步';
+
+-- 最后更新: 2025-01-18
+-- 版本: 1.1 - 添加存储配置和商家状态同步修复
+
+-- 迁移完成标记
+INSERT INTO platform_settings (key, value) VALUES ('migration_version', '1.1') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+INSERT INTO platform_settings (key, value) VALUES ('storage_configured', 'true') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+INSERT INTO platform_settings (key, value) VALUES ('merchant_status_sync_enabled', 'true') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 COMMIT;
 

@@ -181,10 +181,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           accessToken: session?.access_token ? 'present' : 'missing'
         })
         
-        // 如果是权限错误或用户不存在，直接登出用户避免幽灵状态
-        if (error.code === '42501' || error.code === 'PGRST116' || error.message?.includes('permission denied')) {
-          console.warn('[AuthContext] Critical error detected, signing out user to prevent ghost state')
+        // 如果是权限错误，直接登出用户避免幽灵状态
+        if (error.code === '42501' || error.message?.includes('permission denied')) {
+          console.warn('[AuthContext] Permission error detected, signing out user to prevent ghost state')
           await signOut()
+          return
+        }
+        
+        // 如果用户配置不存在（PGRST116），尝试创建用户配置
+        if (error.code === 'PGRST116') {
+          console.log('[AuthContext] User profile not found, attempting to create one')
+          await createMissingUserProfile(userId)
           return
         }
         
@@ -252,6 +259,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }, 2000)
     } finally {
       setProfileLoading(false)
+    }
+  }
+
+  // 创建缺失的用户配置
+  const createMissingUserProfile = async (userId: string) => {
+    try {
+      console.log('[AuthContext] Creating missing user profile for userId:', userId)
+      
+      // 从 auth.users 获取用户信息
+      const { data: authUser } = await supabase.auth.getUser()
+      
+      if (!authUser.user) {
+        console.error('[AuthContext] No auth user found when creating profile')
+        await signOut()
+        return
+      }
+      
+      const userData = authUser.user.user_metadata || {}
+      const profileData = {
+        id: userId,
+        phone: authUser.user.phone?.replace('+86', '') || '',
+        name: userData.name || '用户',
+        user_type: userData.user_type || 'customer'
+      }
+      
+      console.log('[AuthContext] Creating profile with data:', profileData)
+      
+      const { error: insertError } = await supabase
+        .from('user_profiles')
+        .insert(profileData)
+      
+      if (insertError) {
+        console.error('[AuthContext] Error creating missing profile:', insertError)
+        setProfileError('无法创建用户配置，请重新登录')
+        setTimeout(() => signOut(), 2000)
+        return
+      }
+      
+      console.log('[AuthContext] Successfully created missing user profile')
+      // 重新获取用户配置
+      await fetchUserProfile(userId)
+      
+    } catch (error) {
+      console.error('[AuthContext] Error in createMissingUserProfile:', error)
+      setProfileError('创建用户配置失败，请重新登录')
+      setTimeout(() => signOut(), 2000)
     }
   }
 
@@ -324,14 +377,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           profileData
         })
         
+        // 如果用户配置创建失败，需要清理已创建的auth用户以避免数据不一致
+        try {
+          console.log('[AuthContext] Cleaning up auth user due to profile creation failure')
+          await supabase.auth.admin.deleteUser(data.user.id)
+        } catch (cleanupError) {
+          console.error('[AuthContext] Failed to cleanup auth user:', cleanupError)
+        }
+        
         // 根据错误类型提供更具体的错误信息
-        let errorMessage = '用户配置创建失败，请重新注册'
+        let errorMessage = '注册失败，请重试'
         if (profileError.code === '23505') {
-          errorMessage = '该手机号已被注册，请使用其他手机号或直接登录'
+          errorMessage = '该手机号已被注册，请直接登录'
         } else if (profileError.code === '42501') {
           errorMessage = '权限不足，请联系管理员'
         } else if (profileError.message?.includes('duplicate key')) {
-          errorMessage = '用户已存在，请直接登录'
+          errorMessage = '该手机号已被注册，请直接登录'
         }
         
         return { error: new Error(errorMessage) }

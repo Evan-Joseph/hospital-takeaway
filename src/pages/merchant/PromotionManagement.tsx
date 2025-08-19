@@ -7,11 +7,13 @@ import Input from '../../components/ui/Input';
 import Modal from '../../components/ui/Modal';
 import Loading from '../../components/ui/Loading';
 import Empty from '../../components/Empty';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { toast } from 'sonner';
 
 interface Merchant {
   id: string;
   name: string;
+  minimum_order_amount?: number;
 }
 
 interface Promotion {
@@ -43,13 +45,6 @@ interface PromotionFormData {
   start_date: string;
   end_date: string;
   is_active: boolean;
-  promotion_type: 'general' | 'product_specific' | 'category_specific' | 'minimum_amount';
-  minimum_amount: string;
-  applicable_products: string[];
-  applicable_categories: string[];
-  max_usage_count: string;
-  max_usage_per_customer: string;
-  max_usage_product_count: string;
 }
 
 interface Props {
@@ -68,25 +63,68 @@ export default function PromotionManagement({ merchant }: Props) {
     discount_value: '',
     start_date: '',
     end_date: '',
-    is_active: true,
-    promotion_type: 'general',
-    minimum_amount: '',
-    applicable_products: [],
-    applicable_categories: [],
-    max_usage_count: '',
-    max_usage_per_customer: '',
-    max_usage_product_count: ''
+    is_active: true
   });
   const [submitting, setSubmitting] = useState(false);
   const [products, setProducts] = useState<{id: string, name: string, category: string}[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [minimumOrderAmount, setMinimumOrderAmount] = useState<string>('0');
+  const [updatingMinimumOrder, setUpdatingMinimumOrder] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [promotionToDelete, setPromotionToDelete] = useState<Promotion | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (merchant?.id) {
       fetchPromotions();
       fetchProducts();
+      fetchMerchantInfo();
     }
   }, [merchant?.id]);
+
+  const fetchMerchantInfo = async () => {
+    if (!merchant?.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('merchants')
+        .select('minimum_order_amount')
+        .eq('id', merchant.id)
+        .single();
+
+      if (error) throw error;
+      setMinimumOrderAmount((data?.minimum_order_amount || 0).toString());
+    } catch (error) {
+      console.error('Error fetching merchant info:', error);
+    }
+  };
+
+  const updateMinimumOrderAmount = async () => {
+    if (!merchant?.id) return;
+    
+    const amount = parseFloat(minimumOrderAmount);
+    if (isNaN(amount) || amount < 0) {
+      toast.error('请输入有效的起送金额');
+      return;
+    }
+    
+    setUpdatingMinimumOrder(true);
+    
+    try {
+      const { error } = await supabase
+        .from('merchants')
+        .update({ minimum_order_amount: amount })
+        .eq('id', merchant.id);
+
+      if (error) throw error;
+      toast.success('起送金额设置成功');
+    } catch (error) {
+      console.error('Error updating minimum order amount:', error);
+      toast.error('设置起送金额失败');
+    } finally {
+      setUpdatingMinimumOrder(false);
+    }
+  };
 
   const fetchProducts = async () => {
     if (!merchant?.id) return;
@@ -141,14 +179,7 @@ export default function PromotionManagement({ merchant }: Props) {
         discount_value: promotion.discount_value.toString(),
         start_date: new Date(promotion.start_date).toISOString().slice(0, 16),
         end_date: new Date(promotion.end_date).toISOString().slice(0, 16),
-        is_active: promotion.is_active,
-        promotion_type: promotion.promotion_type || 'general',
-        minimum_amount: promotion.minimum_amount?.toString() || '',
-        applicable_products: promotion.applicable_products || [],
-        applicable_categories: promotion.applicable_categories || [],
-        max_usage_count: promotion.max_usage_count?.toString() || '',
-        max_usage_per_customer: promotion.max_usage_per_customer?.toString() || '',
-        max_usage_product_count: promotion.max_usage_product_count?.toString() || ''
+        is_active: promotion.is_active
       });
     } else {
       setEditingPromotion(null);
@@ -162,14 +193,7 @@ export default function PromotionManagement({ merchant }: Props) {
         discount_value: '',
         start_date: now.toISOString().slice(0, 16),
         end_date: tomorrow.toISOString().slice(0, 16),
-        is_active: true,
-        promotion_type: 'general',
-        minimum_amount: '',
-        applicable_products: [],
-        applicable_categories: [],
-        max_usage_count: '',
-        max_usage_per_customer: '',
-        max_usage_product_count: ''
+        is_active: true
       });
     }
     setShowModal(true);
@@ -185,14 +209,7 @@ export default function PromotionManagement({ merchant }: Props) {
       discount_value: '',
       start_date: '',
       end_date: '',
-      is_active: true,
-      promotion_type: 'general',
-      minimum_amount: '',
-      applicable_products: [],
-      applicable_categories: [],
-      max_usage_count: '',
-      max_usage_per_customer: '',
-      max_usage_product_count: ''
+      is_active: true
     });
   };
 
@@ -206,6 +223,7 @@ export default function PromotionManagement({ merchant }: Props) {
       return;
     }
 
+    // 验证折扣值
     if (!formData.discount_value || parseFloat(formData.discount_value) <= 0) {
       toast.error('请输入有效的优惠金额');
       return;
@@ -221,16 +239,6 @@ export default function PromotionManagement({ merchant }: Props) {
       return;
     }
 
-    if (formData.promotion_type === 'product_specific' && formData.applicable_products.length === 0) {
-      toast.error('请至少选择一个适用商品');
-      return;
-    }
-
-    if (formData.promotion_type === 'category_specific' && formData.applicable_categories.length === 0) {
-      toast.error('请至少选择一个适用分类');
-      return;
-    }
-
     setSubmitting(true);
     
     try {
@@ -242,13 +250,13 @@ export default function PromotionManagement({ merchant }: Props) {
         start_date: new Date(formData.start_date).toISOString(),
         end_date: new Date(formData.end_date).toISOString(),
         is_active: formData.is_active,
-        promotion_type: formData.promotion_type,
-        minimum_amount: formData.minimum_amount ? parseFloat(formData.minimum_amount) : 0,
-        applicable_products: formData.applicable_products,
-        applicable_categories: formData.applicable_categories,
-        max_usage_count: formData.max_usage_count ? parseInt(formData.max_usage_count) : null,
-        max_usage_per_customer: formData.max_usage_per_customer ? parseInt(formData.max_usage_per_customer) : null,
-        max_usage_product_count: formData.max_usage_product_count ? parseInt(formData.max_usage_product_count) : null,
+        promotion_type: 'general',
+        minimum_amount: 0,
+        applicable_products: [],
+        applicable_categories: [],
+        max_usage_count: null,
+        max_usage_per_customer: null,
+        max_usage_product_count: null,
         merchant_id: merchant.id
       };
 
@@ -281,23 +289,38 @@ export default function PromotionManagement({ merchant }: Props) {
     }
   };
 
-  const handleDelete = async (promotion: Promotion) => {
-    if (!confirm(`确定要删除优惠活动「${promotion.title}」吗？`)) return;
+  const handleDelete = (promotion: Promotion) => {
+    setPromotionToDelete(promotion);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!promotionToDelete) return;
     
+    setDeleting(true);
     try {
       const { error } = await supabase
         .from('promotions')
         .delete()
-        .eq('id', promotion.id);
+        .eq('id', promotionToDelete.id);
 
       if (error) throw error;
       
       toast.success('优惠活动删除成功');
       fetchPromotions();
+      setShowDeleteDialog(false);
+      setPromotionToDelete(null);
     } catch (error) {
       console.error('Error deleting promotion:', error);
       toast.error('删除优惠活动失败');
+    } finally {
+      setDeleting(false);
     }
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteDialog(false);
+    setPromotionToDelete(null);
   };
 
   const toggleActive = async (promotion: Promotion) => {
@@ -342,12 +365,10 @@ export default function PromotionManagement({ merchant }: Props) {
 
   const getPromotionTypeLabel = (type: string) => {
     const typeLabels = {
-      general: '通用优惠',
-      minimum_amount: '满减优惠',
-      product_specific: '指定商品',
-      category_specific: '指定分类'
+      general: '全场折扣',
+      minimum_amount: '满减优惠'
     };
-    return typeLabels[type as keyof typeof typeLabels] || type;
+    return typeLabels[type as keyof typeof typeLabels] || '全场折扣';
   };
 
   const getPromotionStatus = (promotion: Promotion) => {
@@ -394,6 +415,47 @@ export default function PromotionManagement({ merchant }: Props) {
           创建活动
         </Button>
       </div>
+
+      {/* 起送金额设置 */}
+      <Card className="p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">起送金额设置</h2>
+            <p className="text-gray-600">设置最低订单金额，防止恶意下单</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-700">起送金额：</span>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={minimumOrderAmount}
+                onChange={(e) => setMinimumOrderAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-24"
+              />
+              <span className="text-sm text-gray-700">元</span>
+            </div>
+            <Button
+              onClick={updateMinimumOrderAmount}
+              disabled={updatingMinimumOrder}
+              size="sm"
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {updatingMinimumOrder ? '保存中...' : '保存'}
+            </Button>
+          </div>
+        </div>
+        <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <p className="text-sm text-yellow-800">
+            <strong>说明：</strong>
+            {parseFloat(minimumOrderAmount) > 0 
+              ? `顾客订单金额低于${minimumOrderAmount}元时将无法下单`
+              : '当前无起送金额限制，顾客可以下任意金额的订单'}
+          </p>
+        </div>
+      </Card>
 
       {/* Promotions List */}
       {promotions.length === 0 ? (
@@ -516,7 +578,8 @@ export default function PromotionManagement({ merchant }: Props) {
                     onClick={() => handleDelete(promotion)}
                     className="text-red-600 border-red-200"
                   >
-                    <Trash2 className="w-3 h-3" />
+                    <Trash2 className="w-3 h-3 mr-1" />
+                    删除
                   </Button>
                 </div>
               </Card>
@@ -557,191 +620,58 @@ export default function PromotionManagement({ merchant }: Props) {
 
           {/* Promotion Type */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">优惠活动类型 *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">优惠活动类型</label>
+            <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50">
+              <span className="text-gray-700">全场折扣优惠</span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              适用于店铺所有商品的折扣优惠
+            </p>
+          </div>
+
+
+
+          {/* 折扣设置 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">折扣类型 *</label>
             <select
-              value={formData.promotion_type}
-              onChange={(e) => setFormData(prev => ({ ...prev, promotion_type: e.target.value as any }))}
+              value={formData.discount_type}
+              onChange={(e) => setFormData(prev => ({ ...prev, discount_type: e.target.value as 'percentage' | 'fixed_amount' }))}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
             >
-              <option value="general">通用优惠</option>
-              <option value="minimum_amount">满减优惠</option>
-              <option value="product_specific">指定商品优惠</option>
-              <option value="category_specific">指定分类优惠</option>
+              <option value="percentage">百分比折扣</option>
+              <option value="fixed_amount">固定金额减免</option>
             </select>
           </div>
 
-          {/* Minimum Amount for minimum_amount type */}
-          {formData.promotion_type === 'minimum_amount' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">最低消费金额 (元) *</label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={formData.minimum_amount}
-                onChange={(e) => setFormData(prev => ({ ...prev, minimum_amount: e.target.value }))}
-                placeholder="50.00"
-                required
-              />
-            </div>
-          )}
-
-          {/* Product Selection for product_specific type */}
-          {formData.promotion_type === 'product_specific' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">选择适用商品 *</label>
-              <div className="border border-gray-200 rounded-lg p-3 max-h-48 overflow-y-auto">
-                {products.length === 0 ? (
-                  <p className="text-gray-500 text-sm">暂无可选商品</p>
-                ) : (
-                  <div className="space-y-2">
-                    {products.map(product => (
-                      <label key={product.id} className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={formData.applicable_products.includes(product.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setFormData(prev => ({
-                                ...prev,
-                                applicable_products: [...prev.applicable_products, product.id]
-                              }));
-                            } else {
-                              setFormData(prev => ({
-                                ...prev,
-                                applicable_products: prev.applicable_products.filter(id => id !== product.id)
-                              }));
-                            }
-                          }}
-                          className="rounded border-gray-300"
-                        />
-                        <span className="text-sm text-gray-700">{product.name}</span>
-                        <span className="text-xs text-gray-500">({product.category})</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {formData.applicable_products.length === 0 && (
-                <p className="text-red-500 text-xs mt-1">请至少选择一个商品</p>
-              )}
-            </div>
-          )}
-
-          {/* Category Selection for category_specific type */}
-          {formData.promotion_type === 'category_specific' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">选择适用分类 *</label>
-              <div className="border border-gray-200 rounded-lg p-3 max-h-48 overflow-y-auto">
-                {categories.length === 0 ? (
-                  <p className="text-gray-500 text-sm">暂无可选分类</p>
-                ) : (
-                  <div className="space-y-2">
-                    {categories.map(category => (
-                      <label key={category} className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={formData.applicable_categories.includes(category)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setFormData(prev => ({
-                                ...prev,
-                                applicable_categories: [...prev.applicable_categories, category]
-                              }));
-                            } else {
-                              setFormData(prev => ({
-                                ...prev,
-                                applicable_categories: prev.applicable_categories.filter(cat => cat !== category)
-                              }));
-                            }
-                          }}
-                          className="rounded border-gray-300"
-                        />
-                        <span className="text-sm text-gray-700">{category}</span>
-                        <span className="text-xs text-gray-500">
-                          ({products.filter(p => p.category === category).length} 个商品)
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {formData.applicable_categories.length === 0 && (
-                <p className="text-red-500 text-xs mt-1">请至少选择一个分类</p>
-              )}
-            </div>
-          )}
-
-          {/* Discount Type and Value */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">优惠方式 *</label>
-              <select
-                value={formData.discount_type}
-                onChange={(e) => setFormData(prev => ({ ...prev, discount_type: e.target.value as 'percentage' | 'fixed_amount' }))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              >
-                <option value="percentage">百分比折扣</option>
-                <option value="fixed_amount">固定金额减免</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {formData.discount_type === 'percentage' ? '折扣百分比 (%)' : '减免金额 (元)'} *
-              </label>
-              <Input
-                type="number"
-                step={formData.discount_type === 'percentage' ? '1' : '0.01'}
-                min="0"
-                max={formData.discount_type === 'percentage' ? '100' : undefined}
-                value={formData.discount_value}
-                onChange={(e) => setFormData(prev => ({ ...prev, discount_value: e.target.value }))}
-                placeholder={formData.discount_type === 'percentage' ? '10' : '5.00'}
-                required
-              />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {formData.discount_type === 'percentage' ? '折扣百分比 (%)' : '减免金额 (元)'} *
+            </label>
+            <Input
+              type="number"
+              step={formData.discount_type === 'percentage' ? '1' : '0.01'}
+              min={formData.discount_type === 'percentage' ? '1' : '0.01'}
+              max={formData.discount_type === 'percentage' ? '99' : undefined}
+              value={formData.discount_value}
+              onChange={(e) => setFormData(prev => ({ ...prev, discount_value: e.target.value }))}
+              placeholder={formData.discount_type === 'percentage' ? '例如：20 (表示8折)' : '例如：10.00 (减免10元)'}
+              required
+            />
+            <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <strong>优惠效果示例：</strong>
+                {formData.discount_value && parseFloat(formData.discount_value) > 0 
+                  ? formData.discount_type === 'percentage'
+                    ? `原价100元的商品，在您制定的这个优惠下，只需支付${(100 - parseFloat(formData.discount_value)).toFixed(0)}元`
+                    : `原价100元的商品，在您制定的这个优惠下，只需支付${(100 - parseFloat(formData.discount_value)).toFixed(2)}元`
+                  : `请输入${formData.discount_type === 'percentage' ? '折扣百分比' : '减免金额'}查看效果`}
+              </p>
             </div>
           </div>
 
-          {/* Usage Limits */}
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">总使用次数限制</label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={formData.max_usage_count}
-                  onChange={(e) => setFormData(prev => ({ ...prev, max_usage_count: e.target.value }))}
-                  placeholder="不限制请留空"
-                />
-                <p className="text-xs text-gray-500 mt-1">限制优惠券被使用的总次数</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">每人使用次数限制</label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={formData.max_usage_per_customer}
-                  onChange={(e) => setFormData(prev => ({ ...prev, max_usage_per_customer: e.target.value }))}
-                  placeholder="不限制请留空"
-                />
-                <p className="text-xs text-gray-500 mt-1">限制每个顾客使用优惠券的次数</p>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">最大使用商品数限制</label>
-              <Input
-                type="number"
-                min="1"
-                value={formData.max_usage_product_count}
-                onChange={(e) => setFormData(prev => ({ ...prev, max_usage_product_count: e.target.value }))}
-                placeholder="不限制请留空"
-              />
-              <p className="text-xs text-gray-500 mt-1">限制使用优惠券的商品总数量（推荐使用此限制方式）</p>
-            </div>
-          </div>
+
 
           {/* Start and End Date */}
           <div className="grid grid-cols-2 gap-4">
@@ -812,6 +742,19 @@ export default function PromotionManagement({ merchant }: Props) {
           </div>
         </form>
       </Modal>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteDialog}
+        onClose={cancelDelete}
+        onConfirm={confirmDelete}
+        title="确认删除优惠活动"
+        message={`确定要删除优惠活动「${promotionToDelete?.title}」吗？此操作不可撤销！`}
+        confirmText="删除"
+        cancelText="取消"
+        type="danger"
+        loading={deleting}
+      />
     </div>
   );
 }

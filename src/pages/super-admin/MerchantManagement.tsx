@@ -210,9 +210,15 @@ export default function MerchantManagement({ onUpdate }: Props) {
     setUpdating(merchantId);
     
     try {
+      // 同时更新 status 和 is_active 字段以确保数据一致性
+      const updateData: { status: string; is_active?: boolean } = { status };
+      
+      // 根据状态设置 is_active 字段
+      updateData.is_active = (status === 'active');
+      
       const { error } = await supabase
         .from('merchants')
-        .update({ status: status })
+        .update(updateData)
         .eq('id', merchantId);
 
       if (error) throw error;
@@ -224,12 +230,14 @@ export default function MerchantManagement({ onUpdate }: Props) {
         'pending': '设为待审核'
       }[status] || '更新';
       
-      toast.success(`商家已${statusText}`);
+      toast.success(`商家${statusText}成功`);
+      
+      // 重新获取数据
       fetchMerchants();
       onUpdate();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating merchant status:', error);
-      toast.error('更新商家状态失败');
+      toast.error(`操作失败: ${error.message}`);
     } finally {
       setUpdating(null);
     }

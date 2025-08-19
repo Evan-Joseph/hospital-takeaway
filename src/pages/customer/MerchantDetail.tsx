@@ -43,6 +43,7 @@ export default function MerchantDetail() {
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [productCategories, setProductCategories] = useState<string[]>([])
   const [quantities, setQuantities] = useState<Record<string, number>>({})
+
   
   const { addItem, getTotalItems } = useCartStore()
   const cartItemsCount = getTotalItems()
@@ -104,6 +105,8 @@ export default function MerchantDetail() {
         console.error('Error fetching promotions:', promotionsError)
       } else {
         setPromotions(promotionsData || [])
+        
+
       }
     } catch (error) {
       console.error('Error fetching merchant data:', error)
@@ -149,6 +152,8 @@ export default function MerchantDetail() {
     toast.success(`已添加 ${quantity} 个 ${product.name} 到购物车`)
     setQuantities(prev => ({ ...prev, [product.id]: 0 }))
   }
+
+
 
   if (loading) {
     return (
@@ -259,7 +264,7 @@ export default function MerchantDetail() {
                     product_specific: '指定商品',
                     category_specific: '指定分类'
                   };
-                  return typeLabels[type as keyof typeof typeLabels] || type;
+                  return typeLabels[type as keyof typeof typeLabels] || '通用优惠';
                 };
                 
                 return (
