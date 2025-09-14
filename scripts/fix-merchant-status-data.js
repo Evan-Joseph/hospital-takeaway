@@ -9,12 +9,42 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// 配置 Supabase 客户端
-const supabaseUrl = 'http://47.104.163.98:8000';
-const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhvc3BpdGFsLWRlbGl2ZXJ5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTUyOTU0NCwiZXhwIjoyMDAwMDAwMDAwfQ.BNeaz2yIZhQR2pX_j-xTBqxU8deYG245OOkxQ18BsJg';
+// 配置 Supabase 客户端（优先环境变量，其次 .envOfSupabase 文件）
+const envUrl = process.env.SUPABASE_PUBLIC_URL || process.env.VITE_SUPABASE_URL;
+const envServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVICE_ROLE_KEY;
+
+let supabaseUrl = envUrl;
+let supabaseServiceKey = envServiceRole;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  // 尝试从 .envOfSupabase 读取
+  try {
+    const fs = await import('fs');
+    const path = await import('path');
+    const envPath = path.join(process.cwd(), '.envOfSupabase');
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf8');
+      const map = {};
+      content.split('\n').forEach(line => {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+          const [key, ...valueParts] = trimmed.split('=');
+          map[key.trim()] = valueParts.join('=').trim();
+        }
+      });
+      supabaseUrl = supabaseUrl || map.SUPABASE_PUBLIC_URL || map.VITE_SUPABASE_URL;
+      supabaseServiceKey = supabaseServiceKey || map.SUPABASE_SERVICE_ROLE_KEY || map.SERVICE_ROLE_KEY;
+    }
+  } catch {}
+}
 
 if (!supabaseUrl) {
-  console.error('❌ 错误: 缺少 VITE_SUPABASE_URL 环境变量');
+  console.error('❌ 错误: 缺少 SUPABASE_PUBLIC_URL/VITE_SUPABASE_URL 配置');
+  process.exit(1);
+}
+
+if (!supabaseServiceKey) {
+  console.error('❌ 错误: 缺少 SUPABASE_SERVICE_ROLE_KEY/SERVICE_ROLE_KEY 配置');
   process.exit(1);
 }
 

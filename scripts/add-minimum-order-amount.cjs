@@ -23,8 +23,12 @@ async function addMinimumOrderAmount() {
     console.log('🔧 开始为 merchants 表添加起送金额字段...');
     
     const config = loadSupabaseConfig();
-    const supabaseUrl = 'http://47.104.163.98:8000'; // 使用云端地址
+    const supabaseUrl = process.env.SUPABASE_PUBLIC_URL || process.env.VITE_SUPABASE_URL || config.SUPABASE_PUBLIC_URL || config.VITE_SUPABASE_URL;
     const serviceRoleKey = config.SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl) {
+      throw new Error('未找到 Supabase URL，请设置 SUPABASE_PUBLIC_URL 或 VITE_SUPABASE_URL');
+    }
     
     if (!serviceRoleKey) {
       throw new Error('未找到 SERVICE_ROLE_KEY，请检查 .envOfSupabase 文件');

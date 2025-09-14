@@ -40,12 +40,12 @@ async function fixBucketMimeConfig() {
     // 加载配置
     const config = loadEnvConfig();
     
-    // 使用云端URL而不是localhost
-    const supabaseUrl = 'http://47.104.163.98:8000';
+    // 使用环境变量或配置文件中的URL
+    const supabaseUrl = process.env.SUPABASE_PUBLIC_URL || process.env.VITE_SUPABASE_URL || config.SUPABASE_PUBLIC_URL || config.VITE_SUPABASE_URL;
     const serviceRoleKey = config.SERVICE_ROLE_KEY;
     
     if (!supabaseUrl || !serviceRoleKey) {
-      throw new Error('缺少必要的配置: SUPABASE_PUBLIC_URL 和 SERVICE_ROLE_KEY');
+      throw new Error('缺少必要的配置: SUPABASE_PUBLIC_URL/VITE_SUPABASE_URL 和 SERVICE_ROLE_KEY');
     }
     
     console.log(`📡 连接到云端Supabase: ${supabaseUrl}`);

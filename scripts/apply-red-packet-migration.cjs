@@ -2,8 +2,25 @@ const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
 
-// 从环境变量读取配置
-const SUPABASE_URL = process.env.SUPABASE_PUBLIC_URL || 'http://47.104.163.98:8000';
+// 从环境变量或 .envOfSupabase 读取配置（不再使用硬编码默认值）
+let SUPABASE_URL = process.env.SUPABASE_PUBLIC_URL || process.env.VITE_SUPABASE_URL;
+if (!SUPABASE_URL) {
+  try {
+    const envPath = path.join(__dirname, '..', '.envOfSupabase');
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf8');
+      const map = {};
+      content.split('\n').forEach(line => {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+          const [k, ...v] = trimmed.split('=');
+          map[k.trim()] = v.join('=').trim();
+        }
+      });
+      SUPABASE_URL = map.SUPABASE_PUBLIC_URL || map.VITE_SUPABASE_URL;
+    }
+  } catch {}
+}
 const SERVICE_ROLE_KEY = process.env.SERVICE_ROLE_KEY;
 
 if (!SERVICE_ROLE_KEY) {

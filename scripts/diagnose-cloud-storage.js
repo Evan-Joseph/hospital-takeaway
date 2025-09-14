@@ -32,7 +32,7 @@ function loadCloudConfig() {
   });
   
   return {
-    url: 'http://47.104.163.98:8000', // 云端IP
+    url: process.env.SUPABASE_PUBLIC_URL || process.env.VITE_SUPABASE_URL || config.SUPABASE_PUBLIC_URL || config.VITE_SUPABASE_URL,
     anonKey: config.ANON_KEY,
     serviceRoleKey: config.SERVICE_ROLE_KEY
   };
