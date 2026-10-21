@@ -15,6 +15,11 @@
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT">
 </p>
 
+
+<p align="center">
+  <img src="assets/hospital_takeaway_banner.png" width="100%" alt="Hospital Takeaway Banner" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.12);" />
+</p>
+
 ---
 
 ## 📖 项目简介 (Overview)
