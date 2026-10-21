@@ -1,4 +1,4 @@
-# 🏥 Hospital Takeaway (码上购)
+# 🏥 医疗便民订购平台 (Hospital Takeaway PWA)
 
 <p align="center">
   <b>A Healthcare-Oriented Ordering PWA for Clinical & Hospital Scenarios</b><br>
@@ -7,14 +7,13 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/React-18.3-61DAFB?logo=react&logoColor=black" alt="React 18">
-  <img src="https://img.shields.io/badge/TypeScript-5.5-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
-  <img src="https://img.shields.io/badge/Vite-5.4-646CFF?logo=vite&logoColor=white" alt="Vite">
+  <img src="https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Vite-6.3-646CFF?logo=vite&logoColor=white" alt="Vite">
   <img src="https://img.shields.io/badge/TailwindCSS-3.4-38B2AC?logo=tailwindcss&logoColor=white" alt="Tailwind CSS">
   <img src="https://img.shields.io/badge/Supabase-Database%20%7C%20Auth%20%7C%20Realtime-3ECF8E?logo=supabase&logoColor=white" alt="Supabase">
   <img src="https://img.shields.io/badge/PWA-Offline%20Ready-5A0FC8?logo=pwa&logoColor=white" alt="PWA Ready">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT">
 </p>
-
 
 <p align="center">
   <img src="assets/hospital_takeaway_banner.png" width="100%" alt="Hospital Takeaway Banner" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.12);" />
@@ -22,23 +21,43 @@
 
 ---
 
+## 📱 实机运行截屏 (Live Screenshots)
+
+| 🏥 便民订购首页 (Home) | 🍱 入驻商户列表 (Merchants) | 🔐 用户与角色登录 (Auth) |
+| :---: | :---: | :---: |
+| <img src="assets/screenshots/01_home_live.png" width="260" alt="Hospital Takeaway Home" /> | <img src="assets/screenshots/02_merchants_live.png" width="260" alt="Merchant List" /> | <img src="assets/screenshots/03_login_live.png" width="260" alt="Auth Login" /> |
+| **病房全院公告与轮播**：支持病床精准配送、优惠活动与最近订单一键复购。 | **科室/餐厅分类列表**：商家营业状态标签、起送金额与床位专送承诺。 | **多端角色身份验证**：患者、陪护家属、入驻商家与总管理员分离登录。 |
+
+---
+
 ## 📖 项目简介 (Overview)
 
-**Hospital Takeaway (码上购)** 是专为住院患者、陪护家属及医护人员设计的轻量级医疗便民餐饮与日用品订购平台。
+**医疗便民订购平台 (Hospital Takeaway)** 是专为住院患者、陪护家属及医护人员设计的轻量级医疗便民餐饮与日用品订购平台。
 
 系统针对医院病房信号不稳定、病患行动受限等痛点，采用 **PWA (Progressive Web App)** 架构，支持手机桌面一键添加与离线缓存；后端依托 **Supabase (PostgreSQL + Realtime + RLS)** 实现全链路实时订单订阅、智能库存扣减及多角色权限隔离。
 
 ---
 
-## 🌟 核心特性 (Key Features)
+## 🛠️ 基于源码的核心功能架构 (Code Grounding)
 
-- **📱 PWA 离线支持**：基于 Service Worker 实现核心静态资源与商品缓存，弱网或无网络环境下依然支持快速加载与本地桌面添加到屏。
-- **👥 三角色协同体系**：
-  - **顾客端 (Patient/Family)**：病床号定位、商品分类检索、购物车、优惠券抵扣、扫码核销码支付。
-  - **商家端 (Merchant)**：菜品与库存实时管理、新订单声波/桌面实时提醒、状态流转操作台、出货统计。
-  - **管理端 (Admin)**：入驻商户资质审核、轮播公告配置、平台日结流水与履约监控。
-- **⚡ 实时订单流转**：通过 Supabase Realtime Channels 建立长连接，订单状态秒级同步，告别客户端轮询。
-- **🔒 细粒度安全访问 (RLS)**：PostgreSQL 行级安全策略严格限制各角色数据读写边界，保障患者隐私与财务数据安全。
+系统完全由源代码定义，分为三大角色工作台：
+
+### 1. 顾客端 (`src/pages/customer/`)
+- **病床精准配送**：录入住院楼栋、病区科室与床位号，订单直达病榻；
+- **购物车与优惠抵扣 (`cartStore.ts`)**：支持单品满减、全店折抵与库存强校验；
+- **核销码与扫码支付**：支持线下扫商户收款码并提交核销码，防止错付漏付；
+- **订单超时防沉没 (`utils/orderTimeout.ts`)**：30 分钟未标记支付自动归档释放库存。
+
+### 2. 商家端 (`src/pages/merchant/`)
+- **接单与状态机流转 (`OrderManagement.tsx`)**：接单 → 备餐/备货 → 病区配送中 → 确认核销；
+- **菜品与实时库存 (`MenuManagement.tsx`)**：菜品分类录入、库存预警与一键售罄下架；
+- **营销活动管理 (`PromotionManagement.tsx`)**：配置限时特惠与阶梯满减；
+- **财务与收款码 (`PaymentManagement.tsx`)**：上传微信/支付宝商户收款码。
+
+### 3. 总管控制台 (`src/pages/super-admin/`)
+- **商户入驻资质核验 (`MerchantManagement.tsx`)**：卫生资质审查与上架授权；
+- **全院公告与轮播发布 (`ContentManagement.tsx`)**：实时向全院端广播就餐提醒与安全指引；
+- **平台全域数据统计 (`Analytics.tsx`)**：各商户履约率、日流水与退单分析。
 
 ---
 
@@ -55,51 +74,27 @@ graph LR
 
 ---
 
-## 🛠️ 技术栈 (Tech Stack)
-
-| 层次 | 技术选型 | 说明 |
-|---|---|---|
-| **前端框架** | React 18 + Vite 5 | SPA 快速构建与热更新 |
-| **语言与规范** | TypeScript 5.5 + ESLint | 全局静态类型检查 |
-| **界面与样式** | Tailwind CSS + Lucide Icons + Sonner | 实用优先响应式布局与优雅通知吐司 |
-| **状态管理** | Zustand | 轻量级全局认证与购物车状态驱动 |
-| **后端云服务** | Supabase (PostgreSQL 15) | 托管数据库、JWT 鉴权、文件存储与 Realtime 事件流 |
-| **PWA 原语** | `vite-plugin-pwa` + Workbox | 离线缓存策略与 Web App Manifest |
-
----
-
-## 📦 项目结构 (Directory Structure)
+## 📦 项目代码结构 (Directory Structure)
 
 ```text
 hospital-takeaway/
+├── assets/screenshots/      # 从实机运行环境中抓取的真实 UI 截屏
 ├── src/
-│   ├── components/          # 公共 UI 组件与页面布局骨架
-│   │   ├── ui/              # 基础原子组件 (Buttons, Dialogs, Inputs)
-│   │   └── layout/          # 顶部导航、底部 Tab 与角色侧边栏
-│   ├── pages/               # 路由页面
-│   │   ├── auth/            # 登录、注册与权限重定向
-│   │   ├── customer/        # 顾客端主页、购物车与订单流
-│   │   ├── merchant/        # 商家管理端操作台与商品录入
-│   │   └── super-admin/     # 平台全域数据看板
-│   ├── hooks/               # 自定义 React Hooks (订单监听、网络状态等)
-│   ├── stores/              # Zustand 状态存储 (cartStore, authStore)
-│   └── lib/                 # Supabase Client 初始化与工具库
-├── supabase/
-│   └── migrations/          # 完整的数据库迁移脚本与 RLS 策略
-└── public/                  # PWA 图标与应用清单 (manifest.json)
+│   ├── components/ui/       # 基础组件 (Card, Modal, StatusBadge, ImageUpload)
+│   ├── contexts/            # 认证上下文 (AuthContext) 与智能导航 (NavigationContext)
+│   ├── stores/              # Zustand 状态管理 (cartStore)
+│   ├── utils/               # 订单超时取消策略 (orderTimeout.ts)
+│   ├── pages/               # 顾客端、商家端、总管控制台路由组件
+│   └── lib/                 # Supabase 客户端配置与实时通道监听
+├── supabase/migrations/     # 包含 RLS 策略的完整 PostgreSQL 迁移脚本
+└── public/                  # PWA Manifest 与离线图标
 ```
 
 ---
 
 ## 🚀 快速开始 (Quickstart)
 
-### 1. 环境准备
-
-确保本机已安装：
-- [Node.js](https://nodejs.org/) (>= 18.0.0)
-- [pnpm](https://pnpm.io/) (推荐) 或 `npm`
-
-### 2. 克隆与安装
+### 1. 安装依赖与环境配置
 
 ```bash
 git clone https://github.com/Evan-Joseph/hospital-takeaway.git
@@ -107,46 +102,29 @@ cd hospital-takeaway
 pnpm install
 ```
 
-### 3. 配置环境变量
-
-复制环境变量模板：
+复制环境变量配置：
 ```bash
 cp .env.example .env
 ```
 
-填入你的 Supabase 项目凭据：
+配置你的 Supabase 凭据：
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key-here
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-### 4. 数据库初始化
-
-使用 Supabase CLI 执行数据库结构初始化与权限配置：
-```bash
-# 本地或远程重置数据库结构
-supabase db push
-# 或直接在 Supabase SQL Editor 中执行 supabase/migrations/ 目录下的 SQL 文件
-```
-
-### 5. 启动开发服务器
+### 2. 启动开发与预览
 
 ```bash
-pnpm run dev
+# 启动本地开发服务
+pnpm dev
+
+# 生产环境构建与预览
+pnpm build
+pnpm preview
 ```
 
-浏览器打开 `http://localhost:5173` 即可预览完整多端交互。
-
----
-
-## 📊 核心数据库实体 (Database Schema)
-
-- `user_profiles`: 用户基础扩展信息（角色分类：`customer`, `merchant`, `admin`）
-- `merchants`: 入驻商户资料、营业执照、配送费用与收款码
-- `products`: 菜品/物资分类、定价、实时库存及上下架状态
-- `orders`: 订单主表（含病区、楼层、床位、核销码、金额及状态机）
-- `order_items`: 订单行明细与规格参数
-- `promotions`: 优惠券与满减规则引擎
+在浏览器打开 `http://localhost:5173` 即可体验。
 
 ---
 
